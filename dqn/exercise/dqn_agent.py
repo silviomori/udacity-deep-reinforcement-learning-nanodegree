@@ -33,9 +33,14 @@ class Agent():
         self.action_size = action_size
         self.seed = random.seed(seed)
 
+        print("Running on: "+str(device))
+        
         # Q-Network
         self.qnetwork_local = QNetwork(state_size, action_size, seed).to(device)
+        
         self.qnetwork_target = QNetwork(state_size, action_size, seed).to(device)
+        self.qnetwork_target.eval()
+        
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
 
         # Replay memory
@@ -85,8 +90,32 @@ class Agent():
         """
         states, actions, rewards, next_states, dones = experiences
 
-        ## TODO: compute and minimize the loss
+        ## DONE: compute and minimize the loss
         "*** YOUR CODE HERE ***"
+        
+        
+        with torch.no_grad():
+            # calculate the target rewards for the next_states
+            target_rewards = self.qnetwork_target(next_states)
+            # select the maximum reward for each next_state
+            target_rewards = target_rewards.max(1)[0]
+            # change shape: [batch_size] --> [batch_size, 1]
+            target_rewards = target_rewards.unsqueeze(1)
+            # calculate the discounted target rewards
+            target_rewards = rewards + (gamma * target_rewards * (1 - dones))
+
+        # calculate the expected rewards for each action for the states
+        expected_rewards = self.qnetwork_local(states) # shape: [batch_size, action_size]
+        # get the reward for the action selected for each state
+        expected_rewards = expected_rewards.gather(1, actions) # shape: [batch_size, 1]
+        
+        # calculate the loss
+        loss = F.mse_loss(expected_rewards, target_rewards)
+        
+        # perform the back-propagation
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
         # ------------------- update target network ------------------- #
         self.soft_update(self.qnetwork_local, self.qnetwork_target, TAU)                     
